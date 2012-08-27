@@ -46,6 +46,7 @@ GetSymbolFromOperand(const MachineOperand &MO) const {
   assert((MO.isGlobal() || MO.isSymbol()) && "Isn't a symbol reference");
 
   SmallString<128> Name;
+  bool IsFunction = false;
 
   if (!MO.isGlobal()) {
     assert(MO.isSymbol());
@@ -59,6 +60,8 @@ GetSymbolFromOperand(const MachineOperand &MO) const {
         MO.getTargetFlags() == X86II::MO_DARWIN_NONLAZY_PIC_BASE ||
         MO.getTargetFlags() == X86II::MO_DARWIN_HIDDEN_NONLAZY_PIC_BASE)
       isImplicitlyPrivate = true;
+
+    IsFunction = GV->getValueID() == llvm::Value::FunctionVal;
 
     Mang->getNameWithPrefix(Name, GV, isImplicitlyPrivate);
   }
@@ -126,7 +129,10 @@ GetSymbolFromOperand(const MachineOperand &MO) const {
   }
   }
 
-  return Ctx.GetOrCreateSymbol(Name.str());
+  MCSymbol* Sym = Ctx.GetOrCreateSymbol(Name.str());
+  Sym->setFunction(IsFunction);
+
+  return Sym;
 }
 
 MCOperand X86MCInstLower::LowerSymbolOperand(const MachineOperand &MO,

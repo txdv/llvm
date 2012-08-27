@@ -55,12 +55,15 @@ namespace llvm {
     /// IsUsed - True if this symbol has been used.
     mutable unsigned IsUsed : 1;
 
+    /// IsFunction - True if this symbol references a function.
+    mutable unsigned IsFunction;
+
   private:  // MCContext creates and uniques these.
     friend class MCExpr;
     friend class MCContext;
     MCSymbol(StringRef name, bool isTemporary)
       : Name(name), Section(0), Value(0),
-        IsTemporary(isTemporary), IsUsed(false) {}
+        IsTemporary(isTemporary), IsUsed(false), IsFunction(false) {}
 
     MCSymbol(const MCSymbol&);       // DO NOT IMPLEMENT
     void operator=(const MCSymbol&); // DO NOT IMPLEMENT
@@ -77,6 +80,10 @@ namespace llvm {
     /// isUsed - Check if this is used.
     bool isUsed() const { return IsUsed; }
     void setUsed(bool Value) const { IsUsed = Value; }
+
+    /// isFunction - Check if this is a function.
+    bool isFunction() const { return IsFunction; }
+    void setFunction(bool Value) const { IsFunction = Value; }
 
     /// @}
     /// @name Associated Sections

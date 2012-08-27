@@ -462,6 +462,13 @@ void WinCOFFObjectWriter::DefineSymbol(MCSymbolData const &SymbolData,
       external ? COFF::IMAGE_SYM_CLASS_EXTERNAL : COFF::IMAGE_SYM_CLASS_STATIC;
   }
 
+  // If no symbol type was specified in the streamer, define it here.
+  if (coff_symbol->Data.Type == 0) {
+    if (SymbolData.getSymbol().isFunction())
+      coff_symbol->Data.Type =
+        COFF::IMAGE_SYM_DTYPE_FUNCTION << COFF::SCT_COMPLEX_TYPE_SHIFT;
+  }
+
   if (SymbolData.Fragment != NULL)
     coff_symbol->Section =
       SectionMap[&SymbolData.Fragment->getParent()->getSection()];
