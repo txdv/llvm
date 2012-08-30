@@ -46,6 +46,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
+#include "llvm/Support/Win64EH.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -93,6 +94,13 @@ SectionHeadersShort("headers", cl::desc("Alias for --section-headers"),
 static cl::alias
 SectionHeadersShorter("h", cl::desc("Alias for --section-headers"),
                       cl::aliasopt(SectionHeaders));
+
+static cl::opt<bool>
+UnwindInfo("unwind-info", cl::desc("Display unwind information"));
+
+static cl::alias
+UnwindInfoShort("u", cl::desc("Alias for --unwind-info"),
+                cl::aliasopt(::UnwindInfo));
 
 static StringRef ToolName;
 
@@ -551,6 +559,127 @@ static void PrintSymbolTable(const ObjectFile *o) {
   }
 }
 
+namespace {
+  using namespace llvm::Win64EH;
+  StringRef GetCOFFUnwindCodeTypeName(uint8_t Code) {
+    switch(Code) {
+    case UOP_PushNonVol: return "UOP_PushNonVol";
+    case UOP_AllocLarge: return "UOP_AllocLarge";
+    case UOP_AllocSmall: return "UOP_AllocSmall";
+    case UOP_SetFPReg: return "UOP_SetFPReg";
+    case UOP_SaveNonVol: return "UOP_SaveNonVol";
+    case UOP_SaveNonVolBig: return "UOP_SaveNonVolBig";
+    case UOP_SaveXMM128: return "UOP_SaveXMM128";
+    case UOP_SaveXMM128Big: return "UOP_SaveXMM128Big";
+    case UOP_PushMachFrame: return "UOP_PushMachFrame";
+    }
+  }
+}
+
+namespace {
+ llvm::raw_ostream &writeHexNumber(llvm::raw_ostream &Out, unsigned long long N) {
+  if (N >= 10)
+    Out << "0x";
+  Out.write_hex(N);
+  return Out;
+ }
+}
+
+static void PrintCOFFUnwindInfo(const COFFObjectFile* o) {
+  const coff_file_header *header;
+  if (error(o->getHeader(header))) return;
+
+  if (header->Machine != COFF::IMAGE_FILE_MACHINE_AMD64) {
+    errs() << "Unsupported image machine type "
+              "(currently only AMD64 is supported).\n";
+    return;
+  }
+
+  const coff_section* pdata = 0, *xdata = 0;
+  
+  error_code ec;
+  for (section_iterator si = o->begin_sections(),
+                            se = o->end_sections();
+                            si != se; si.increment(ec)) {
+    if (error(ec)) return;
+    
+    StringRef Name;
+    if (error(si->getName(Name))) continue;
+    
+    if (Name.compare(".pdata") == 0) {
+      pdata = o->getCOFFSection(si);
+      continue;
+    }
+
+    if (Name.compare(".xdata") == 0) {
+      xdata = o->getCOFFSection(si);
+      continue;
+    }
+  }
+
+  if (!pdata) return;
+
+  ArrayRef<uint8_t> Contents;
+  if (error(o->getSectionContents(pdata, Contents))) return;
+  if (Contents.empty()) return;
+
+  ArrayRef<uint8_t> XContents;
+  if (xdata)
+    o->getSectionContents(xdata, XContents);
+
+  unsigned i = 0;
+  while ((Contents.size() - i) >= sizeof(RuntimeFunction)) {
+    RuntimeFunction* RF = (RuntimeFunction*)(Contents.data() + i);
+
+    outs() << "Function Table:\n";
+    
+    outs() << "  Start Address: ";
+    writeHexNumber(outs(), RF->startAddress);
+    outs() << "\n";
+
+    outs() << "  End Address: ";
+    writeHexNumber(outs(), RF->endAddress);
+    outs() << "\n";
+
+    outs() << "  Unwind Info Address: ";
+    writeHexNumber(outs(), RF->unwindInfoOffset);
+    outs() << "\n";
+
+    if (RF->unwindInfoOffset >= XContents.size())
+      continue;
+
+    Win64EH::UnwindInfo* UI = (Win64EH::UnwindInfo*)
+                         (XContents.data() + RF->unwindInfoOffset);
+
+    outs() << "  Size of prolog: " << (int) UI->prologSize << "\n";
+
+    if (UI->numCodes)
+      outs() << "  Unwind Codes:\n";
+
+    for (unsigned c = 0; c < UI->numCodes; ++c) {
+      UnwindCode UC = UI->unwindCodes[c];
+      outs() << "    " << GetCOFFUnwindCodeTypeName(UC.u.unwindOp) << "\n";
+    }
+
+    outs() << "\n\n";
+
+    i += sizeof(RuntimeFunction);
+  }
+}
+
+static void PrintUnwindInfo(const ObjectFile *o) {
+  outs() << "Unwind info:\n\n";
+
+  if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
+    PrintCOFFUnwindInfo(coff);
+  } else {
+    // TODO: Extract DWARF dump tool to objdump.
+    errs() << "This operation is only currently supported "
+              "for COFF object files.\n";
+    return;
+  }
+}
+
 static void DumpObject(const ObjectFile *o) {
   outs() << '\n';
   outs() << o->getFileName()
@@ -566,6 +695,8 @@ static void DumpObject(const ObjectFile *o) {
     PrintSectionContents(o);
   if (SymbolTable)
     PrintSymbolTable(o);
+  if (::UnwindInfo)
+    PrintUnwindInfo(o);
 }
 
 /// @brief Dump each object file in \a a;
@@ -644,7 +775,8 @@ int main(int argc, char **argv) {
       && !Relocations
       && !SectionHeaders
       && !SectionContents
-      && !SymbolTable) {
+      && !SymbolTable
+      && !::UnwindInfo) {
     cl::PrintHelpMessage();
     return 2;
   }
