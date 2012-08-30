@@ -60,9 +60,9 @@ enum {
 
 /// RuntimeFunction - An entry in the table of functions with unwind info.
 struct RuntimeFunction {
-  uint64_t startAddress;
-  uint64_t endAddress;
-  uint64_t unwindInfoOffset;
+  uint32_t startAddress;
+  uint32_t endAddress;
+  uint32_t unwindInfoOffset;
 };
 
 /// UnwindInfo - An entry in the exception table.
