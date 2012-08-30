@@ -46,7 +46,7 @@ unsigned X86WinCOFFObjectWriter::getRelocType(unsigned FixupKind) const {
     return Is64Bit ? COFF::IMAGE_REL_AMD64_REL32 : COFF::IMAGE_REL_I386_REL32;
   case FK_Data_4:
   case X86::reloc_signed_4byte:
-    return Is64Bit ? COFF::IMAGE_REL_AMD64_ADDR32 : COFF::IMAGE_REL_I386_DIR32;
+    return Is64Bit ? COFF::IMAGE_REL_AMD64_ADDR32NB : COFF::IMAGE_REL_I386_DIR32;
   case FK_Data_8:
     if (Is64Bit)
       return COFF::IMAGE_REL_AMD64_ADDR64;
