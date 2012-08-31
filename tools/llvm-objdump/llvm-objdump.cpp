@@ -449,6 +449,26 @@ static void PrintSectionContents(const ObjectFile *o) {
   }
 }
 
+static const char* GetCOFFStringSymbol(const COFFObjectFile *coff,
+                                       const coff_symbol *symbol) {
+  StringRef name;
+  if (error(coff->getSymbolName(symbol, name))) return 0;
+
+  const char* str = 0;
+  ArrayRef<uint8_t> contents;
+
+  if (name.startswith("$SG")) {
+    // cl-emmited global strings, dump it as a convenience
+    const coff_section *sec = 0;
+    if (!error(coff->getSection(symbol->SectionNumber, sec))) {
+      coff->getSectionContents(sec, contents);
+      str = (const char*) contents.data() + symbol->Value;
+    }
+  }
+  
+  return str;
+}
+
 static void PrintCOFFSymbolTable(const COFFObjectFile *coff) {
   const coff_file_header *header;
   if (error(coff->getHeader(header))) return;
@@ -462,8 +482,8 @@ static void PrintCOFFSymbolTable(const COFFObjectFile *coff) {
         const coff_aux_section_definition *asd;
         if (error(coff->getAuxSymbol<coff_aux_section_definition>(i, asd)))
           return;
-        outs() << "AUX "
-               << format("scnlen 0x%x nreloc %d nlnno %d checksum 0x%x "
+        outs() << "Aux |  "
+            << format("Size: 0x%x | #Relocs: %d | #LineNums: %d | Checksum 0x%x "
                          , unsigned(asd->Length)
                          , unsigned(asd->NumberOfRelocations)
                          , unsigned(asd->NumberOfLinenumbers)
@@ -472,19 +492,33 @@ static void PrintCOFFSymbolTable(const COFFObjectFile *coff) {
                          , unsigned(asd->Number)
                          , unsigned(asd->Selection));
       } else
-        outs() << "AUX Unknown\n";
+        outs() << "  Aux. Section Unknown\n";
     } else {
       StringRef name;
       if (error(coff->getSymbol(i, symbol))) return;
       if (error(coff->getSymbolName(symbol, name))) return;
-      outs() << "[" << format("%2d", i) << "]"
-             << "(sec " << format("%2d", int(symbol->SectionNumber)) << ")"
-             << "(fl 0x00)" // Flag bits, which COFF doesn't have.
-             << "(ty " << format("%3x", unsigned(symbol->Type)) << ")"
-             << "(scl " << format("%3x", unsigned(symbol->StorageClass)) << ") "
-             << "(nx " << unsigned(symbol->NumberOfAuxSymbols) << ") "
-             << "0x" << format("%08x", unsigned(symbol->Value)) << " "
-             << name << "\n";
+
+      const char* gstring = GetCOFFStringSymbol(coff, symbol);
+
+      outs() << "#" << format("%2d", i) << " | "
+             << " Section: " << format("%2d", int(symbol->SectionNumber))
+             << " | Type: " << format("%3x", unsigned(symbol->Type))
+             << " | StorageClass: " << format("%3x", unsigned(symbol->StorageClass))
+             << " | #AuxSymbols: " << unsigned(symbol->NumberOfAuxSymbols)
+             << " | Value: 0x" << format("%08x", unsigned(symbol->Value))
+             << " | " << name;
+
+      if (gstring) {
+        std::string print(gstring);
+        if (print.size() > 16) {
+          print.resize(13);
+          print.append("...");
+        }
+        outs() << " \"" << print << "\"";
+      }
+
+      outs() << "\n";
+
       aux_count = symbol->NumberOfAuxSymbols;
     }
   }
@@ -577,13 +611,48 @@ namespace {
 }
 
 namespace {
- llvm::raw_ostream &writeHexNumber(llvm::raw_ostream &Out, unsigned long long N) {
-  if (N >= 10)
-    Out << "0x";
-  Out.write_hex(N);
-  return Out;
- }
+  llvm::raw_ostream &writeHexNumber(llvm::raw_ostream &Out, unsigned long long N) {
+    if (N >= 10)
+      Out << "0x";
+    Out.write_hex(N);
+    return Out;
+  }
+
+ bool IsCSpecificHandler(const COFFObjectFile* o, uint64_t offset) {
+    error_code ec;
+    for (symbol_iterator si = o->begin_symbols(),
+                         se = o->end_symbols(); si != se; si.increment(ec)) {
+      if (error(ec)) continue;
+
+      StringRef Name;
+      if (error(si->getName(Name))) continue;
+
+#if 0
+      uint64_t Addr;
+      if (error(si->getFileOffset(Addr))) continue;
+
+      if (Addr == offset)
+#endif
+      if (Name.compare("__C_specific_handler") == 0)
+        return true;
+    }
+
+    return false;
+  }
+
+  // Used in standard 64-bit __try/__except/__finally
+  // constructs.
+  struct ScopeTableAMD64 {
+    uint32_t Count;
+    struct {
+      uint32_t BeginAddress;
+      uint32_t EndAddress;
+      uint32_t HandlerAddress;
+      uint32_t JumpTarget;
+    } ScopeRecord[1];
+  };
 }
+
 
 static void PrintCOFFUnwindInfo(const COFFObjectFile* o) {
   const coff_file_header *header;
@@ -653,12 +722,42 @@ static void PrintCOFFUnwindInfo(const COFFObjectFile* o) {
 
     outs() << "  Size of prolog: " << (int) UI->prologSize << "\n";
 
+    if (UI->flags & Win64EH::UNW_ChainInfo) {
+      outs() << "  Chained Unwind Info\n";
+      continue;
+    }
+
     if (UI->numCodes)
-      outs() << "  Unwind Codes:\n";
+      outs() << "\n  Unwind Codes:";
 
     for (unsigned c = 0; c < UI->numCodes; ++c) {
       UnwindCode UC = UI->unwindCodes[c];
-      outs() << "    " << GetCOFFUnwindCodeTypeName(UC.u.unwindOp) << "\n";
+      outs() << "\n    " << GetCOFFUnwindCodeTypeName(UC.u.unwindOp) << "\n";
+    }
+
+    if (UI->flags & (UNW_ExceptionHandler | UNW_TerminateHandler)) {
+      uint64_t offset = UI->getLanguageSpecificHandlerOffset();
+
+      // Check if the handler is the SEH standard one.
+      if (IsCSpecificHandler(o, offset)) {
+        ScopeTableAMD64* ST = (ScopeTableAMD64*) UI->getExceptionData();
+        if (ST->Count)
+          outs() << "\n  Scope Table:\n";
+        for (unsigned i = 0; i < ST->Count; ++i) {
+            outs() << "    Begin: ";
+            writeHexNumber(outs(), ST->ScopeRecord->BeginAddress);
+
+            outs() << "\n    End: ";
+            writeHexNumber(outs(), ST->ScopeRecord->EndAddress);
+
+            outs() << "\n    Handler: ";
+            writeHexNumber(outs(), ST->ScopeRecord->HandlerAddress);
+
+            outs() << "\n    Jump Target: ";
+            writeHexNumber(outs(), ST->ScopeRecord->JumpTarget);
+            outs() << "\n";
+        }
+      }
     }
 
     outs() << "\n\n";
@@ -669,6 +768,7 @@ static void PrintCOFFUnwindInfo(const COFFObjectFile* o) {
 
 static void PrintUnwindInfo(const ObjectFile *o) {
   outs() << "Unwind info:\n\n";
+  outs().flush();
 
   if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
     PrintCOFFUnwindInfo(coff);
