@@ -108,6 +108,22 @@ CMModel("code-model",
                               "Large code model"),
                    clEnumValEnd));
 
+static cl::opt<llvm::ExceptionHandling::Model>
+ExceptionHandlingModel("eh",
+        cl::desc("Choose exception handling model"),
+        cl::init(ExceptionHandling::Default),
+        cl::values(clEnumValN(ExceptionHandling::Default, "default",
+                              "Target default exception model"),
+                   clEnumValN(ExceptionHandling::None, "none",
+                              "Disables emisson of unwinding data"),
+                   clEnumValN(ExceptionHandling::DwarfCFI, "dwarf",
+                              "DWARF exceptions model"),
+                   clEnumValN(ExceptionHandling::SjLj, "sjlj",
+                              "SjLj (setjmp/longjmp) exceptions model"),
+                   clEnumValN(ExceptionHandling::Win64, "win64",
+                              "Win64 SEH exceptions model"),
+                   clEnumValEnd));
+
 static cl::opt<bool>
 RelaxAll("mc-relax-all",
   cl::desc("When used with filetype=obj, "
@@ -491,6 +507,15 @@ int main(int argc, char **argv) {
       TheTriple.isMacOSXVersionLT(10, 6))
     Target.setMCUseLoc(false);
 
+  if (ExceptionHandlingModel != ExceptionHandling::Default)
+    Target.setExceptionHandlingModel(ExceptionHandlingModel);
+
+  if (ExceptionHandlingModel == ExceptionHandling::Win64
+      && !TheTriple.isArch64Bit()) {
+      errs() << argv[0]
+             << ": warning: Win64 EH incompatible with non 64-bit arch\n";
+  }
+
   // Figure out where we are going to send the output.
   OwningPtr<tool_output_file> Out
     (GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
@@ -517,7 +542,7 @@ int main(int argc, char **argv) {
   if (RelaxAll) {
     if (FileType != TargetMachine::CGFT_ObjectFile)
       errs() << argv[0]
-             << ": warning: ignoring -mc-relax-all because filetype != obj";
+             << ": warning: ignoring -mc-relax-all because filetype != obj\n";
     else
       Target.setMCRelaxAll(true);
   }
