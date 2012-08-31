@@ -28,6 +28,9 @@ class MCStreamer;
 
 class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   const X86Subtarget *Subtarget;
+
+  void EmitUnwindingInstruction(const MachineInstr *MI);
+
  public:
   explicit X86AsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
     : AsmPrinter(TM, Streamer) {

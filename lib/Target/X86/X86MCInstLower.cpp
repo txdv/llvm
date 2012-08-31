@@ -647,6 +647,62 @@ static void LowerTlsAddr(MCStreamer &OutStreamer,
   OutStreamer.EmitInstruction(call);
 }
 
+static bool isCalleeSavedReg(const TargetRegisterInfo *RI, unsigned Reg) {
+  const uint16_t *NVRegs = RI->getCalleeSavedRegs();
+  while (*NVRegs) {
+    if (*NVRegs == Reg)
+      return true;
+    NVRegs++;
+  }
+  return false;
+}
+
+void X86AsmPrinter::EmitUnwindingInstruction(const MachineInstr *MI) {
+  assert(MI->getFlag(MachineInstr::FrameSetup) &&
+         "Only call frame setup instructions allowed here!");
+  unsigned SReg, DReg;
+  unsigned Offset;
+  const X86RegisterInfo *RI =
+    static_cast<const X86RegisterInfo *>(TM.getRegisterInfo());
+  switch (MI->getOpcode()) {
+  default: llvm_unreachable("Unknown frame setup opcode!");
+  case X86::PUSH64r:
+    SReg = MI->getOperand(0).getReg();
+    if (isCalleeSavedReg(RI, SReg))
+      OutStreamer.EmitWin64EHPushReg(RI->getSEHRegNum(SReg));
+    else
+      OutStreamer.EmitWin64EHAllocStack(8);
+    break;
+  case X86::SUB64ri8:
+  case X86::SUB64ri32: {
+    DReg = MI->getOperand(0).getReg();
+    Offset = MI->getOperand(2).getImm();
+    if (DReg == RI->getStackRegister()) {
+      OutStreamer.EmitWin64EHAllocStack(Offset);
+    }
+    break;
+  }
+  case X86::MOV64rr:
+    DReg = MI->getOperand(0).getReg();
+    SReg = MI->getOperand(1).getReg();
+    if (DReg == RI->getFrameRegister(*MF) && SReg == RI->getStackRegister())
+      OutStreamer.EmitWin64EHSetFrame(RI->getSEHRegNum(DReg), 0);
+    break;
+  case X86::MOV64mr:
+  case X86::MOVAPSmr:
+    DReg = MI->getOperand(0).getReg();
+    Offset = MI->getOperand(0).getOffset();
+    SReg = MI->getOperand(1).getReg();
+    if (DReg == RI->getFrameRegister(*MF) || DReg == RI->getStackRegister()) {
+      if (MI->getOpcode() == X86::MOVAPSmr)
+        OutStreamer.EmitWin64EHSaveXMM(RI->getSEHRegNum(SReg), Offset);
+      else
+        OutStreamer.EmitWin64EHSaveReg(RI->getSEHRegNum(SReg), Offset);
+    }
+    break;
+  }
+}
+
 void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   X86MCInstLower MCInstLowering(Mang, *MF, *this);
   switch (MI->getOpcode()) {
@@ -753,4 +809,9 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   MCInst TmpInst;
   MCInstLowering.Lower(MI, TmpInst);
   OutStreamer.EmitInstruction(TmpInst);
+
+  // Emit SEH unwind info for Win64-style EH.
+  if (MAI->getExceptionHandlingType() == ExceptionHandling::Win64 &&
+      MI->getFlag(MachineInstr::FrameSetup))
+    EmitUnwindingInstruction(MI);
 }
