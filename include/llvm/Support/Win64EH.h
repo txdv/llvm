@@ -78,17 +78,17 @@ struct UnwindInfo {
   void *getLanguageSpecificData() {
     return reinterpret_cast<void *>(&unwindCodes[(numCodes+1) & ~1]);
   }
-  uint64_t getLanguageSpecificHandlerOffset() {
-    return *reinterpret_cast<uint64_t *>(getLanguageSpecificData());
+  uint32_t getLanguageSpecificHandlerOffset() {
+    return *reinterpret_cast<uint32_t *>(getLanguageSpecificData());
   }
-  void setLanguageSpecificHandlerOffset(uint64_t offset) {
+  void setLanguageSpecificHandlerOffset(uint32_t offset) {
     *reinterpret_cast<uint64_t *>(getLanguageSpecificData()) = offset;
   }
   RuntimeFunction *getChainedFunctionEntry() {
     return reinterpret_cast<RuntimeFunction *>(getLanguageSpecificData());
   }
   void *getExceptionData() {
-    return reinterpret_cast<void *>(reinterpret_cast<uint64_t *>(
+    return reinterpret_cast<void *>(reinterpret_cast<uint32_t *>(
                                                   getLanguageSpecificData())+1);
   }
 };
