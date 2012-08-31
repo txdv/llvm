@@ -27,6 +27,11 @@ namespace llvm {
     enum Model { Default, JITDefault, Small, Kernel, Medium, Large };
   }
 
+  // Exception Handling model types.
+  namespace ExceptionHandling {
+    enum Model { None, Default, DwarfCFI, SjLj, ARM, Win64 };
+  }
+
   // TLS models.
   namespace TLSModel {
     enum Model {

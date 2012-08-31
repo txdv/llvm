@@ -28,6 +28,9 @@ namespace llvm {
     ///
     CodeModel::Model CMModel;
 
+    /// EHModel - Exception Handling model.
+    ExceptionHandling::Model EHModel;
+
     /// OptLevel - Optimization level.
     ///
     CodeGenOpt::Level OptLevel;
@@ -40,6 +43,10 @@ namespace llvm {
     Reloc::Model getRelocationModel() const { return RelocationModel; }
 
     CodeModel::Model getCodeModel() const { return CMModel; }
+
+    ExceptionHandling::Model getEHModel() const { return EHModel; }
+
+    void setEHModel(ExceptionHandling::Model EH) { EHModel = EH; }
 
     CodeGenOpt::Level getOptLevel() const { return OptLevel; }
   };

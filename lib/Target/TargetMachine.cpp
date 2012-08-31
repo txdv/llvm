@@ -77,6 +77,17 @@ CodeModel::Model TargetMachine::getCodeModel() const {
   return CodeGenInfo->getCodeModel();
 }
 
+ExceptionHandling::Model TargetMachine::getExceptionHandlingModel() const {
+  if (!CodeGenInfo)
+    return ExceptionHandling::Default;
+  return CodeGenInfo->getEHModel();
+}
+
+void TargetMachine::setExceptionHandlingModel(ExceptionHandling::Model EH) {
+    assert(CodeGenInfo && "Need a valid MCCodeGenInfo to set EH model");
+    CodeGenInfo->setEHModel(EH);
+}
+
 /// Get the IR-specified TLS model for Var.
 static TLSModel::Model getSelectedTLSModel(const GlobalVariable *Var) {
   switch (Var->getThreadLocalMode()) {

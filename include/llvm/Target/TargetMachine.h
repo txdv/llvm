@@ -72,7 +72,7 @@ protected: // Can only create subclasses.
   std::string TargetFS;
 
   /// CodeGenInfo - Low level target information such as relocation model.
-  const MCCodeGenInfo *CodeGenInfo;
+  MCCodeGenInfo *CodeGenInfo;
 
   /// AsmInfo - Contains target specific asm information.
   ///
@@ -196,6 +196,12 @@ public:
   /// getCodeModel - Returns the code model. The choices are small, kernel,
   /// medium, large, and target default.
   CodeModel::Model getCodeModel() const;
+
+  /// getExceptionHandlingModel - Returns the exception handling model.
+  ExceptionHandling::Model getExceptionHandlingModel() const;
+
+  /// setExceptionHandlingModel - Sets the exception handling model.
+  void setExceptionHandlingModel(ExceptionHandling::Model);
 
   /// getTLSModel - Returns the TLS model which should be used for the given
   /// global variable.

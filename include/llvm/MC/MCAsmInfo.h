@@ -18,6 +18,7 @@
 
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/MC/MCDirectives.h"
+#include "llvm/Support/CodeGen.h"
 #include <cassert>
 #include <vector>
 
@@ -27,10 +28,6 @@ namespace llvm {
   class MCStreamer;
   class MCSymbol;
   class MCContext;
-
-  namespace ExceptionHandling {
-    enum ExceptionsType { None, DwarfCFI, SjLj, ARM, Win64 };
-  }
 
   namespace LCOMM {
     enum LCOMMType { None, NoAlignment, ByteAlignment };
@@ -305,8 +302,8 @@ namespace llvm {
     /// information.
     bool SupportsDebugInformation;           // Defaults to false.
 
-    /// SupportsExceptionHandling - True if target supports exception handling.
-    ExceptionHandling::ExceptionsType ExceptionsType; // Defaults to None
+    /// Exception handling model.
+    ExceptionHandling::Model ExceptionsType; // Defaults to None
 
     /// DwarfUsesInlineInfoSection - True if DwarfDebugInlineSection is used to
     /// encode inline subroutine information.
@@ -526,7 +523,7 @@ namespace llvm {
     bool doesSupportExceptionHandling() const {
       return ExceptionsType != ExceptionHandling::None;
     }
-    ExceptionHandling::ExceptionsType getExceptionHandlingType() const {
+    ExceptionHandling::Model getExceptionHandlingType() const {
       return ExceptionsType;
     }
     bool isExceptionHandlingDwarf() const {
