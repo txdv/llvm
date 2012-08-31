@@ -121,6 +121,8 @@ X86MCAsmInfoMicrosoft::X86MCAsmInfoMicrosoft(const Triple &Triple) {
   if (Triple.getArch() == Triple::x86_64) {
     GlobalPrefix = "";
     PrivateGlobalPrefix = ".L";
+
+    ExceptionsType = ExceptionHandling::Win64;
   }
 
   AssemblerDialect = AsmWriterFlavor;
