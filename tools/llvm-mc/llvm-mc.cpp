@@ -143,6 +143,22 @@ CMModel("code-model",
                               "Large code model"),
                    clEnumValEnd));
 
+static cl::opt<llvm::ExceptionHandling::Model>
+ExceptionHandlingModel("eh",
+        cl::desc("Choose exception handling model"),
+        cl::init(ExceptionHandling::Default),
+        cl::values(clEnumValN(ExceptionHandling::Default, "default",
+                              "Target default exception model"),
+                   clEnumValN(ExceptionHandling::None, "none",
+                              "Disables emisson of unwinding data"),
+                   clEnumValN(ExceptionHandling::DwarfCFI, "dwarf",
+                              "DWARF exceptions model"),
+                   clEnumValN(ExceptionHandling::SjLj, "sjlj",
+                              "SjLj (setjmp/longjmp) exceptions model"),
+                   clEnumValN(ExceptionHandling::Win64, "win64",
+                              "Win64 SEH exceptions model"),
+                   clEnumValEnd));
+
 static cl::opt<bool>
 NoInitialTextSection("n", cl::desc("Don't assume assembly file starts "
                                    "in the text section"));

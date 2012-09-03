@@ -11,7 +11,6 @@
 // MCInst records.
 //
 //===----------------------------------------------------------------------===//
-
 #include "MipsMCInstLower.h"
 #include "MipsAsmPrinter.h"
 #include "MipsInstrInfo.h"
@@ -187,5 +186,45 @@ void MipsMCInstLower::LowerLargeShift(const MachineInstr *MI,
   case Mips::DSRA:
     Inst.setOpcode(Mips::DSRA32);
     break;
+  }
+}
+
+// Pick a DEXT or DINS instruction variant based on the pos and size operands
+void MipsMCInstLower::LowerDextDins(const MachineInstr *MI,  MCInst& Inst) {
+  int Opcode = MI->getOpcode();
+
+  if (Opcode == Mips::DEXT)
+    assert(MI->getNumOperands() == 4 &&
+           "Invalid no. of machine operands for DEXT!");
+  else // Only DEXT and DINS are possible
+    assert(MI->getNumOperands() == 5 &&
+           "Invalid no. of machine operands for DINS!");
+
+  assert(MI->getOperand(2).isImm());
+  int64_t pos = MI->getOperand(2).getImm();
+  assert(MI->getOperand(3).isImm());
+  int64_t size = MI->getOperand(3).getImm();
+
+  // rt
+  Inst.addOperand(LowerOperand(MI->getOperand(0)));
+  // rs
+  Inst.addOperand(LowerOperand(MI->getOperand(1)));
+
+  if (size <= 32) {
+    if ((pos < 32)) { // DEXT/DINS
+      Inst.addOperand(MCOperand::CreateImm(pos));
+      Inst.addOperand(MCOperand::CreateImm(size));
+      Inst.setOpcode(Opcode);
+    } else { // DEXTU/DINSU
+      Inst.addOperand(MCOperand::CreateImm(pos - 32));
+      Inst.addOperand(MCOperand::CreateImm(size));
+      Inst.setOpcode((Opcode == Mips::DEXT) ? Mips::DEXTU : Mips::DINSU);
+    }
+  } else { // DEXTM/DINSM
+    assert(pos < 32 && "DEXT/DINS cannot have both size and pos > 32");
+    Inst.addOperand(MCOperand::CreateImm(pos));
+    Inst.addOperand(MCOperand::CreateImm(size - 32));
+    Inst.setOpcode(Mips::DEXTM);
+    Inst.setOpcode((Opcode == Mips::DEXT) ? Mips::DEXTM : Mips::DINSM);
   }
 }

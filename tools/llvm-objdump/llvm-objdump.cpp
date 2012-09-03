@@ -95,6 +95,12 @@ static cl::alias
 SectionHeadersShorter("h", cl::desc("Alias for --section-headers"),
                       cl::aliasopt(SectionHeaders));
 
+static cl::list<std::string>
+MAttrs("mattr",
+  cl::CommaSeparated,
+  cl::desc("Target specific attributes"),
+  cl::value_desc("a1,+a2,-a3,..."));
+
 static cl::opt<bool>
 UnwindInfo("unwind-info", cl::desc("Display unwind information"));
 
@@ -177,6 +183,15 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   if (!TheTarget)
     return;
 
+  // Package up features to be passed to target/subtarget
+  std::string FeaturesStr;
+  if (MAttrs.size()) {
+    SubtargetFeatures Features;
+    for (unsigned i = 0; i != MAttrs.size(); ++i)
+      Features.AddFeature(MAttrs[i]);
+    FeaturesStr = Features.getString();
+  }
+
   error_code ec;
   for (section_iterator i = Obj->begin_sections(),
                         e = Obj->end_sections();
@@ -241,7 +256,7 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     }
 
     OwningPtr<const MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(TripleName, "", ""));
+      TheTarget->createMCSubtargetInfo(TripleName, "", FeaturesStr));
 
     if (!STI) {
       errs() << "error: no subtarget info for target " << TripleName << "\n";

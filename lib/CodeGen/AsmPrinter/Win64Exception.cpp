@@ -1,4 +1,4 @@
-//===-- CodeGen/AsmPrinter/Win64Exception.cpp - Dwarf Exception Impl ------===//
+//===-- CodeGen/AsmPrinter/Win64Exception.cpp - Win64 Exception Impl ------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -81,6 +81,10 @@ void Win64Exception::BeginFunction(const MachineFunction *MF) {
 
   MCSymbol *GCCHandlerSym =
     Asm->GetExternalSymbolSymbol("_GCC_specific_handler");
+
+  MCSymbol *MSCHandlerSym =
+    Asm->GetExternalSymbolSymbol("__C_specific_handler");
+
   Asm->OutStreamer.EmitWin64EHHandler(GCCHandlerSym, true, true);
 
   Asm->OutStreamer.EmitLabel(Asm->GetTempSymbol("eh_func_begin",

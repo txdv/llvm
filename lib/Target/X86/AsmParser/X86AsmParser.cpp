@@ -1537,7 +1537,7 @@ MatchInstruction(SMLoc IDLoc,
 
   // First, handle aliases that expand to multiple instructions.
   // FIXME: This should be replaced with a real .td file alias mechanism.
-  // Also, MatchInstructionImpl should do actually *do* the EmitInstruction
+  // Also, MatchInstructionImpl should actually *do* the EmitInstruction
   // call.
   if (Op->getToken() == "fstsw" || Op->getToken() == "fstcw" ||
       Op->getToken() == "fstsww" || Op->getToken() == "fstcww" ||
@@ -1585,9 +1585,6 @@ MatchInstruction(SMLoc IDLoc,
     Error(IDLoc, "instruction requires a CPU feature not currently enabled",
           EmptyRanges, matchingInlineAsm);
     return true;
-  case Match_ConversionFail:
-    return Error(IDLoc, "unable to convert operands to instruction",
-                 EmptyRanges, matchingInlineAsm);
   case Match_InvalidOperand:
     WasOriginallyInvalidOperand = true;
     break;

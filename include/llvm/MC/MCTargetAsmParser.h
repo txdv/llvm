@@ -25,7 +25,6 @@ template <typename T> class SmallVectorImpl;
 class MCTargetAsmParser : public MCAsmParserExtension {
 public:
   enum MatchResultTy {
-    Match_ConversionFail,
     Match_InvalidOperand,
     Match_MissingFeature,
     Match_MnemonicFail,
@@ -34,8 +33,8 @@ public:
   };
 
 private:
-  MCTargetAsmParser(const MCTargetAsmParser &);   // DO NOT IMPLEMENT
-  void operator=(const MCTargetAsmParser &);  // DO NOT IMPLEMENT
+  MCTargetAsmParser(const MCTargetAsmParser &) LLVM_DELETED_FUNCTION;
+  void operator=(const MCTargetAsmParser &) LLVM_DELETED_FUNCTION;
 protected: // Can only create subclasses.
   MCTargetAsmParser();
 
