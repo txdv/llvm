@@ -2496,8 +2496,18 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
         // lanes of the constant together.
         EVT VT = Vector->getValueType(0);
         unsigned BitWidth = VT.getVectorElementType().getSizeInBits();
+
+        // If the splat value has been compressed to a bitlength lower
+        // than the size of the vector lane, we need to re-expand it to
+        // the lane size.
+        if (BitWidth > SplatBitSize)
+          for (SplatValue = SplatValue.zextOrTrunc(BitWidth);
+               SplatBitSize < BitWidth;
+               SplatBitSize = SplatBitSize * 2)
+            SplatValue |= SplatValue.shl(SplatBitSize);
+
         Constant = APInt::getAllOnesValue(BitWidth);
-        for (unsigned i = 0, n = VT.getVectorNumElements(); i < n; ++i)
+        for (unsigned i = 0, n = SplatBitSize/BitWidth; i < n; ++i)
           Constant &= SplatValue.lshr(i*BitWidth).zextOrTrunc(BitWidth);
       }
     }
@@ -8914,7 +8924,7 @@ SDValue DAGCombiner::BuildUDIV(SDNode *N) {
 // to alias with anything but itself.  Provides base object and offset as
 // results.
 static bool FindBaseOffset(SDValue Ptr, SDValue &Base, int64_t &Offset,
-                           const GlobalValue *&GV, void *&CV) {
+                           const GlobalValue *&GV, const void *&CV) {
   // Assume it is a primitive operation.
   Base = Ptr; Offset = 0; GV = 0; CV = 0;
 
@@ -8939,8 +8949,8 @@ static bool FindBaseOffset(SDValue Ptr, SDValue &Base, int64_t &Offset,
   // for ConstantSDNodes since the same constant pool entry may be represented
   // by multiple nodes with different offsets.
   if (ConstantPoolSDNode *C = dyn_cast<ConstantPoolSDNode>(Base)) {
-    CV = C->isMachineConstantPoolEntry() ? (void *)C->getMachineCPVal()
-                                         : (void *)C->getConstVal();
+    CV = C->isMachineConstantPoolEntry() ? (const void *)C->getMachineCPVal()
+                                         : (const void *)C->getConstVal();
     Offset += C->getOffset();
     return false;
   }
@@ -8965,7 +8975,7 @@ bool DAGCombiner::isAlias(SDValue Ptr1, int64_t Size1,
   SDValue Base1, Base2;
   int64_t Offset1, Offset2;
   const GlobalValue *GV1, *GV2;
-  void *CV1, *CV2;
+  const void *CV1, *CV2;
   bool isFrameIndex1 = FindBaseOffset(Ptr1, Base1, Offset1, GV1, CV1);
   bool isFrameIndex2 = FindBaseOffset(Ptr2, Base2, Offset2, GV2, CV2);
 
