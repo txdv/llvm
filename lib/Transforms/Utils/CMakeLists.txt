@@ -11,6 +11,7 @@ add_llvm_library(LLVMTransformUtils
   DemoteRegToStack.cpp
   InlineFunction.cpp
   InstructionNamer.cpp
+  IntegerDivision.cpp
   LCSSA.cpp
   Local.cpp
   LoopSimplify.cpp
@@ -20,6 +21,7 @@ add_llvm_library(LLVMTransformUtils
   LowerInvoke.cpp
   LowerSwitch.cpp
   Mem2Reg.cpp
+  MetaRenamer.cpp
   ModuleUtils.cpp
   PromoteMemoryToRegister.cpp
   SSAUpdater.cpp

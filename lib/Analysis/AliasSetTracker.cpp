@@ -590,8 +590,10 @@ void AliasSetTracker::print(raw_ostream &OS) const {
   OS << "\n";
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void AliasSet::dump() const { print(dbgs()); }
 void AliasSetTracker::dump() const { print(dbgs()); }
+#endif
 
 //===----------------------------------------------------------------------===//
 //                     ASTCallbackVH Class Implementation

@@ -568,6 +568,19 @@ const char *LLVMGetMDString(LLVMValueRef V, unsigned* Len) {
   return 0;
 }
 
+unsigned LLVMGetMDNodeNumOperands(LLVMValueRef V)
+{
+  return cast<MDNode>(unwrap(V))->getNumOperands();
+}
+
+void LLVMGetMDNodeOperands(LLVMValueRef V, LLVMValueRef *Dest)
+{
+  const MDNode *N = cast<MDNode>(unwrap(V));
+  const unsigned numOperands = N->getNumOperands();
+  for (unsigned i = 0; i < numOperands; i++)
+    Dest[i] = wrap(N->getOperand(i));
+}
+
 unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char* name)
 {
   if (NamedMDNode *N = unwrap(M)->getNamedMetadata(name)) {
@@ -1055,11 +1068,9 @@ LLVMValueRef LLVMConstInsertValue(LLVMValueRef AggConstant,
 LLVMValueRef LLVMConstInlineAsm(LLVMTypeRef Ty, const char *AsmString,
                                 const char *Constraints,
                                 LLVMBool HasSideEffects,
-                                LLVMBool IsAlignStack,
-                                InlineAsm::AsmDialect AsmDialect) {
+                                LLVMBool IsAlignStack) {
   return wrap(InlineAsm::get(dyn_cast<FunctionType>(unwrap(Ty)), AsmString,
-                             Constraints, HasSideEffects, IsAlignStack,
-                             AsmDialect));
+                             Constraints, HasSideEffects, IsAlignStack));
 }
 
 LLVMValueRef LLVMBlockAddress(LLVMValueRef F, LLVMBasicBlockRef BB) {

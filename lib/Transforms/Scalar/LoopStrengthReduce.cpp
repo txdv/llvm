@@ -121,9 +121,11 @@ void RegSortData::print(raw_ostream &OS) const {
   OS << "[NumUses=" << UsedByIndices.count() << ']';
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void RegSortData::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 namespace {
 
@@ -414,9 +416,11 @@ void Formula::print(raw_ostream &OS) const {
   }
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void Formula::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 /// isAddRecSExtable - Return true if the given addrec can be sign-extended
 /// without changing its value.
@@ -974,9 +978,11 @@ void Cost::print(raw_ostream &OS) const {
     OS << ", plus " << SetupCost << " setup cost";
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void Cost::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 namespace {
 
@@ -1060,9 +1066,11 @@ void LSRFixup::print(raw_ostream &OS) const {
     OS << ", Offset=" << Offset;
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRFixup::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 namespace {
 
@@ -1252,9 +1260,11 @@ void LSRUse::print(raw_ostream &OS) const {
     OS << ", widest fixup type: " << *WidestFixupType;
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRUse::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 /// isLegalUse - Test whether the use described by AM is "legal", meaning it can
 /// be completely folded into the user instruction at isel time. This includes
@@ -3436,9 +3446,11 @@ void WorkItem::print(raw_ostream &OS) const {
      << " , add offset " << Imm;
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void WorkItem::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 /// GenerateCrossUseConstantOffsets - Look for registers which are a constant
 /// distance apart and try to form reuse opportunities between them.
@@ -4452,17 +4464,21 @@ void LSRInstance::RewriteForPHI(PHINode *PN,
             SplitLandingPadPredecessors(Parent, BB, "", "", P, NewBBs);
             NewBB = NewBBs[0];
           }
+          // If NewBB==NULL, then SplitCriticalEdge refused to split because all
+          // phi predecessors are identical. The simple thing to do is skip
+          // splitting in this case rather than complicate the API.
+          if (NewBB) {
+            // If PN is outside of the loop and BB is in the loop, we want to
+            // move the block to be immediately before the PHI block, not
+            // immediately after BB.
+            if (L->contains(BB) && !L->contains(PN))
+              NewBB->moveBefore(PN->getParent());
 
-          // If PN is outside of the loop and BB is in the loop, we want to
-          // move the block to be immediately before the PHI block, not
-          // immediately after BB.
-          if (L->contains(BB) && !L->contains(PN))
-            NewBB->moveBefore(PN->getParent());
-
-          // Splitting the edge can reduce the number of PHI entries we have.
-          e = PN->getNumIncomingValues();
-          BB = NewBB;
-          i = PN->getBasicBlockIndex(BB);
+            // Splitting the edge can reduce the number of PHI entries we have.
+            e = PN->getNumIncomingValues();
+            BB = NewBB;
+            i = PN->getBasicBlockIndex(BB);
+          }
         }
       }
 
@@ -4731,9 +4747,11 @@ void LSRInstance::print(raw_ostream &OS) const {
   print_uses(OS);
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void LSRInstance::dump() const {
   print(errs()); errs() << '\n';
 }
+#endif
 
 namespace {
 

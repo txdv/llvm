@@ -284,9 +284,11 @@ MachineFunction::extractStoreMemRefs(MachineInstr::mmo_iterator Begin,
   return std::make_pair(Result, Result + Num);
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void MachineFunction::dump() const {
   print(dbgs());
 }
+#endif
 
 StringRef MachineFunction::getName() const {
   assert(getFunction() && "No function!");
@@ -532,9 +534,11 @@ void MachineFrameInfo::print(const MachineFunction &MF, raw_ostream &OS) const{
   }
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void MachineFrameInfo::dump(const MachineFunction &MF) const {
   print(MF, dbgs());
 }
+#endif
 
 //===----------------------------------------------------------------------===//
 //  MachineJumpTableInfo implementation
@@ -629,7 +633,9 @@ void MachineJumpTableInfo::print(raw_ostream &OS) const {
   OS << '\n';
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void MachineJumpTableInfo::dump() const { print(dbgs()); }
+#endif
 
 
 //===----------------------------------------------------------------------===//
@@ -762,4 +768,6 @@ void MachineConstantPool::print(raw_ostream &OS) const {
   }
 }
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 void MachineConstantPool::dump() const { print(dbgs()); }
+#endif

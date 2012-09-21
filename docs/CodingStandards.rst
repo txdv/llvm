@@ -421,9 +421,9 @@ exit from a function, consider this "bad" code:
 
 .. code-block:: c++
 
-  Value *DoSomething(Instruction *I) {
+  Value *doSomething(Instruction *I) {
     if (!isa<TerminatorInst>(I) &&
-        I->hasOneUse() && SomeOtherThing(I)) {
+        I->hasOneUse() && doOtherThing(I)) {
       ... some long code ....
     }
 
@@ -445,7 +445,7 @@ It is much preferred to format the code like this:
 
 .. code-block:: c++
 
-  Value *DoSomething(Instruction *I) {
+  Value *doSomething(Instruction *I) {
     // Terminators never need 'something' done to them because ... 
     if (isa<TerminatorInst>(I))
       return 0;
@@ -456,7 +456,7 @@ It is much preferred to format the code like this:
       return 0;
 
     // This is really just here for example.
-    if (!SomeOtherThing(I))
+    if (!doOtherThing(I))
       return 0;
     
     ... some long code ....
@@ -601,9 +601,9 @@ code to be structured like this:
 
 .. code-block:: c++
 
-  /// ListContainsFoo - Return true if the specified list has an element that is
+  /// containsFoo - Return true if the specified list has an element that is
   /// a foo.
-  static bool ListContainsFoo(const std::vector<Bar*> &List) {
+  static bool containsFoo(const std::vector<Bar*> &List) {
     for (unsigned i = 0, e = List.size(); i != e; ++i)
       if (List[i]->isFoo())
         return true;
@@ -611,7 +611,7 @@ code to be structured like this:
   }
   ...
 
-  if (ListContainsFoo(BarList)) {
+  if (containsFoo(BarList)) {
     ...
   }
 
@@ -817,6 +817,34 @@ methods or it derives from classes with virtual methods), it must always have at
 least one out-of-line virtual method in the class.  Without this, the compiler
 will copy the vtable and RTTI into every ``.o`` file that ``#include``\s the
 header, bloating ``.o`` file sizes and increasing link times.
+
+Use ``LLVM_DELETED_FUNCTION`` to mark uncallable methods
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Prior to C++11, a common pattern to make a class uncopyable was to declare an
+unimplemented copy constructor and copy assignment operator and make them
+private. This would give a compiler error for accessing a private method or a
+linker error because it wasn't implemented.
+
+With C++11, we can mark methods that won't be implemented with ``= delete``.
+This will trigger a much better error message and tell the compiler that the
+method will never be implemented. This enables other checks like
+``-Wunused-private-field`` to run correctly on classes that contain these
+methods.
+
+To maintain compatibility with C++03, ``LLVM_DELETED_FUNCTION`` should be used
+which will expand to ``= delete`` if the compiler supports it. These methods
+should still be declared private. Example of the uncopyable pattern:
+
+.. code-block:: c++
+
+  class DontCopy {
+  private:
+    DontCopy(const DontCopy&) LLVM_DELETED_FUNCTION;
+    DontCopy &operator =(const DontCopy&) LLVM_DELETED_FUNCTION;
+  public:
+    ...
+  };
 
 Don't evaluate ``end()`` every time through a loop
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1092,7 +1120,7 @@ good:
     };
   } // end anonymous namespace
 
-  static void Helper() { 
+  static void runHelper() { 
     ... 
   }
 
@@ -1112,7 +1140,7 @@ This is bad:
     bool operator<(const char *RHS) const;
   };
 
-  void Helper() { 
+  void runHelper() { 
     ... 
   }
 
@@ -1122,7 +1150,7 @@ This is bad:
 
   } // end anonymous namespace
 
-This is bad specifically because if you're looking at "``Helper``" in the middle
+This is bad specifically because if you're looking at "``runHelper``" in the middle
 of a large C++ file, that you have no immediate way to tell if it is local to
 the file.  When it is marked static explicitly, this is immediately obvious.
 Also, there is no reason to enclose the definition of "``operator<``" in the

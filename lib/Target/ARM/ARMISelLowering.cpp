@@ -514,6 +514,7 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
     setOperationAction(ISD::FLOG10, MVT::v4f32, Expand);
     setOperationAction(ISD::FEXP, MVT::v4f32, Expand);
     setOperationAction(ISD::FEXP2, MVT::v4f32, Expand);
+    setOperationAction(ISD::FFLOOR, MVT::v4f32, Expand);
 
     // Neon does not support some operations on v1i64 and v2i64 types.
     setOperationAction(ISD::MUL, MVT::v1i64, Expand);
@@ -796,12 +797,9 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   setTargetDAGCombine(ISD::ADD);
   setTargetDAGCombine(ISD::SUB);
   setTargetDAGCombine(ISD::MUL);
-
-  if (Subtarget->hasV6T2Ops() || Subtarget->hasNEON()) {
-    setTargetDAGCombine(ISD::AND);
-    setTargetDAGCombine(ISD::OR);
-    setTargetDAGCombine(ISD::XOR);
-  }
+  setTargetDAGCombine(ISD::AND);
+  setTargetDAGCombine(ISD::OR);
+  setTargetDAGCombine(ISD::XOR);
 
   if (Subtarget->hasV6Ops())
     setTargetDAGCombine(ISD::SRL);
@@ -826,7 +824,7 @@ ARMTargetLowering::ARMTargetLowering(TargetMachine &TM)
   benefitFromCodePlacementOpt = true;
 
   // Prefer likely predicted branches to selects on out-of-order cores.
-  predictableSelectIsExpensive = Subtarget->isCortexA9();
+  predictableSelectIsExpensive = Subtarget->isLikeA9();
 
   setMinFunctionAlignment(Subtarget->isThumb() ? 1 : 2);
 }
@@ -9027,8 +9025,8 @@ bool ARMTargetLowering::isDesirableToTransformToIntegerOp(unsigned Opc,
 }
 
 bool ARMTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
-  if (!Subtarget->allowsUnalignedMem())
-    return false;
+  // The AllowsUnaliged flag models the SCTLR.A setting in ARM cpus
+  bool AllowsUnaligned = Subtarget->allowsUnalignedMem();
 
   switch (VT.getSimpleVT().SimpleTy) {
   default:
@@ -9036,10 +9034,14 @@ bool ARMTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
   case MVT::i8:
   case MVT::i16:
   case MVT::i32:
-    return true;
+    // Unaligned access can use (for example) LRDB, LRDH, LDR
+    return AllowsUnaligned;
   case MVT::f64:
-    return Subtarget->hasNEON();
-  // FIXME: VLD1 etc with standard alignment is legal.
+  case MVT::v2f64:
+    // For any little-endian targets with neon, we can support unaligned ld/st
+    // of D and Q (e.g. {D0,D1}) registers by using vld1.i8/vst1.i8.
+    // A big-endian target may also explictly support unaligned accesses
+    return Subtarget->hasNEON() && (AllowsUnaligned || isLittleEndian());
   }
 }
 
