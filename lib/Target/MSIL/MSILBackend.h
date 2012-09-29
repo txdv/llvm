@@ -1,4 +1,4 @@
-//===-- MSILWriter.h - TargetMachine for the MSIL ---------------*- C++ -*-===//
+//===-- MSILBackend.h - TargetMachine for the MSIL --------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //

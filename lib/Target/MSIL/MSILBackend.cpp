@@ -1,4 +1,4 @@
-//===-- MSILWriter.cpp - Library for converting LLVM code to MSIL ---------===//
+//===-- MSILBackend.cpp - Library for converting LLVM code to MSIL --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MSILWriter.h"
+#include "MSILBackend.h"
 #include "llvm/CallingConv.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Intrinsics.h"
