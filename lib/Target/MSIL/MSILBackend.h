@@ -10,8 +10,8 @@
 // This file declares the MSILWriter that is used by the MSIL.
 //
 //===----------------------------------------------------------------------===//
-#ifndef MSILWRITER_H
-#define MSILWRITER_H
+#ifndef MSILBACKEND_H
+#define MSILBACKEND_H
 
 #include "llvm/CallingConv.h"
 #include "llvm/Constants.h"
@@ -31,16 +31,20 @@
 namespace llvm {
   extern Target TheMSILTarget;
 
+  void initializeMSILModulePass(PassRegistry&);
+
+  class MSILWriter;
+
   class MSILModule : public ModulePass {
     Module *ModulePtr;
-    const std::set<const Type *>*& UsedTypes;
-    const TargetData*& TD;
 
   public:
+    MSILWriter* Writer;
+
     static char ID;
-    MSILModule(const std::set<const Type *>*& _UsedTypes,
-               const TargetData*& _TD)
-      : ModulePass(ID), UsedTypes(_UsedTypes), TD(_TD) {}
+    MSILModule() : ModulePass(ID) {
+      initializeMSILModulePass(*PassRegistry::getPassRegistry());
+    }
 
     void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.addRequired<FindUsedTypes>();
@@ -54,6 +58,8 @@ namespace llvm {
     virtual bool runOnModule(Module &M);
 
   };
+
+  void initializeMSILWriterPass(PassRegistry&);
 
   class MSILWriter : public FunctionPass {
     struct StaticInitializer {
@@ -76,12 +82,11 @@ namespace llvm {
   public:
     formatted_raw_ostream &Out;
     Module* ModulePtr;
-    const TargetData* TD;
+    TargetData* TD;
     LoopInfo *LInfo;
     std::vector<StaticInitializer>* InitListPtr;
     std::map<const GlobalVariable*,std::vector<StaticInitializer> >
       StaticInitList;
-    const std::set<const Type *>* UsedTypes;
     static char ID;
     DenseMap<const Value*, unsigned> AnonValueNumbers;
     unsigned NextAnonValueNumber;
@@ -112,6 +117,7 @@ namespace llvm {
     virtual const char *getPassName() const { return "MSIL backend"; }
 
     void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.addRequired<MSILModule>();
       AU.addRequired<LoopInfo>();
       AU.setPreservesAll();
     }
@@ -230,7 +236,7 @@ namespace llvm {
 
     void printFunction(const Function& F);
 
-    void printDeclarations(const TypeSymbolTable& ST);
+    void printDeclarations(const ValueSymbolTable& ST);
 
     unsigned int getBitWidth(const Type* Ty);
 
