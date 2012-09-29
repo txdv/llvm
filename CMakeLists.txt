@@ -80,6 +80,7 @@ set(LLVM_ALL_TARGETS
   Hexagon
   Mips
   MBlaze
+  MSIL
   MSP430
   NVPTX
   PowerPC
