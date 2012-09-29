@@ -1,5 +1,5 @@
 add_llvm_target(MSIL
-  MSILWriter.cpp
+  MSILBackend.cpp
   )
 
 add_subdirectory(TargetInfo)
