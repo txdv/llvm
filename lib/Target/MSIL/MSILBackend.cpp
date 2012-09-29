@@ -12,52 +12,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "MSILBackend.h"
+#include "MSILTargetMachine.h"
 #include "llvm/CallingConv.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Intrinsics.h"
 #include "llvm/IntrinsicInst.h"
-#include "llvm/TypeSymbolTable.h"
+#include "llvm/PassSupport.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Analysis/ConstantsScanner.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/InstVisitor.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/Passes.h"
 using namespace llvm;
 
-namespace llvm {
-  // TargetMachine for the MSIL 
-  struct MSILTarget : public TargetMachine {
-    MSILTarget(const Target &T, const std::string &TT, const std::string &FS)
-      : TargetMachine(T) {}
-
-    virtual bool addPassesToEmitFile(PassManagerBase &PM,
-                                     formatted_raw_ostream &Out,
-                                     CodeGenFileType FileType,
-                                     CodeGenOpt::Level OptLevel,
-                                     bool DisableVerify);
-
-    virtual const TargetData *getTargetData() const { return 0; }
-  };
-}
-
 extern "C" void LLVMInitializeMSILTarget() {
   // Register the target.
-  RegisterTargetMachine<MSILTarget> X(TheMSILTarget);
+  RegisterTargetMachine<MSILTargetMachine> X(TheMSILTarget);
 }
 
 bool MSILModule::runOnModule(Module &M) {
   ModulePtr = &M;
-  TD = &getAnalysis<TargetData>();
+  Writer->TD = &getAnalysis<TargetData>();
   bool Changed = false;
   // Find named types.  
-  TypeSymbolTable& Table = M.getTypeSymbolTable();
-  std::set<const Type *> Types = getAnalysis<FindUsedTypes>().getTypes();
-  for (TypeSymbolTable::iterator I = Table.begin(), E = Table.end(); I!=E; ) {
-    if (!I->second->isStructTy() && !I->second->isOpaqueTy())
+  ValueSymbolTable& Table = M.getValueSymbolTable();
+  const SetVector<Type *> Types = getAnalysis<FindUsedTypes>().getTypes();
+#if 0
+  for (ValueSymbolTable::iterator I = Table.begin(), E = Table.end(); I!=E; ) {
+    if (!I->second->getType()->isStructTy() /*&& !I->second->getType()->isOpaqueTy()*/)
       Table.remove(I++);
     else {
       std::set<const Type *>::iterator T = Types.find(I->second);
@@ -69,6 +56,8 @@ bool MSILModule::runOnModule(Module &M) {
       }
     }
   }
+#endif
+#if 0
   // Find unnamed types.
   unsigned RenameCounter = 0;
   for (std::set<const Type *>::const_iterator I = Types.begin(),
@@ -80,11 +69,23 @@ bool MSILModule::runOnModule(Module &M) {
     }
   // Pointer for FunctionPass.
   UsedTypes = &getAnalysis<FindUsedTypes>().getTypes();
+#endif
+
   return Changed;
 }
 
 char MSILModule::ID = 0;
+INITIALIZE_PASS_BEGIN(MSILModule, "msil-module",
+                "MSIL module pass", false, false)
+INITIALIZE_PASS_DEPENDENCY(TargetData)
+INITIALIZE_PASS_DEPENDENCY(FindUsedTypes)
+INITIALIZE_PASS_END(MSILModule, "msil-module",
+                "MSIL module pass", false, false)
+
+
 char MSILWriter::ID = 0;
+//INITIALIZE_PASS(MSILWriter, "msil-writer",
+//                "MSIL writer", false, false)
 
 bool MSILWriter::runOnFunction(Function &F) {
   if (F.isDeclaration()) return false;
@@ -107,7 +108,7 @@ bool MSILWriter::doInitialization(Module &M) {
   Out << "// External\n";
   printExternals();
   Out << "// Declarations\n";
-  printDeclarations(M.getTypeSymbolTable());
+  printDeclarations(M.getValueSymbolTable());
   Out << "// Definitions\n";
   printGlobalVariables();
   Out << "// Startup code\n";
@@ -327,7 +328,7 @@ std::string MSILWriter::getPrimitiveTypeName(const Type* Ty, bool isSigned) {
   case Type::DoubleTyID:
     return "float64 "; 
   default:
-    errs() << "Type = " << *Ty << '\n';
+    //errs() << "Type = " << *Ty->d << '\n';
     llvm_unreachable("Invalid primitive type");
   }
   return ""; // Not reached
@@ -344,8 +345,8 @@ std::string MSILWriter::getTypeName(const Type* Ty, bool isSigned,
     return "void* ";
   case Type::StructTyID:
     if (isNested)
-      return ModulePtr->getTypeName(Ty);
-    return "valuetype '"+ModulePtr->getTypeName(Ty)+"' ";
+      return Ty->getStructName();
+    return "valuetype '"+Ty->getStructName().str()+"' ";
   case Type::ArrayTyID:
     if (isNested)
       return getArrayTypeName(Ty->getTypeID(),Ty);
@@ -355,7 +356,7 @@ std::string MSILWriter::getTypeName(const Type* Ty, bool isSigned,
       return getArrayTypeName(Ty->getTypeID(),Ty);
     return "valuetype '"+getArrayTypeName(Ty->getTypeID(),Ty)+"' ";
   default:
-    errs() << "Type = " << *Ty << '\n';
+    //errs() << "Type = " << *Ty << '\n';
     llvm_unreachable("Invalid type in getTypeName()");
   }
   return ""; // Not reached
@@ -397,7 +398,7 @@ std::string MSILWriter::getTypePostfix(const Type* Ty, bool Expand,
   case Type::DoubleTyID:
     return "r8";
   case Type::PointerTyID:
-    return "i"+utostr(TD->getTypeAllocSize(Ty));
+    return "i"+utostr(TD->getTypeAllocSize((llvm::Type*)Ty));
   default:
     errs() << "TypeID = " << Ty->getTypeID() << '\n';
     llvm_unreachable("Invalid type in TypeToPostfix()");
@@ -1024,12 +1025,13 @@ void MSILWriter::printInvokeInstruction(const InvokeInst* Inst) {
 void MSILWriter::printSwitchInstruction(const SwitchInst* Inst) {
   // FIXME: Emulate with IL "switch" instruction
   // Emulate = if () else if () else if () else ...
-  for (unsigned int I = 1, E = Inst->getNumCases(); I!=E; ++I) {
+  for (SwitchInst::ConstCaseIt I = Inst->case_begin();
+       I != Inst->case_end(); ++I ) {
     printValueLoad(Inst->getCondition());
-    printValueLoad(Inst->getCaseValue(I));
+    printValueLoad(I.getCaseValue());
     printSimpleInstruction("ceq");
     // Condition jump to successor block
-    printBranchToBlock(Inst->getParent(),Inst->getSuccessor(I),NULL);
+    printBranchToBlock(Inst->getParent(),I.getCaseSuccessor(),NULL);
   }
   // Jump to default block
   printBranchToBlock(Inst->getParent(),NULL,Inst->getDefaultDest());
@@ -1180,11 +1182,13 @@ void MSILWriter::printInstruction(const Instruction* Inst) {
   case Instruction::Invoke:
     printInvokeInstruction(cast<InvokeInst>(Inst));
     break;
+#if 0
   case Instruction::Unwind:
     printSimpleInstruction("newobj",
       "instance void [mscorlib]System.Exception::.ctor()");
     printSimpleInstruction("throw");
     break;
+#endif
   case Instruction::Switch:
     printSwitchInstruction(cast<SwitchInst>(Inst));
     break;
@@ -1456,9 +1460,10 @@ void MSILWriter::printFunction(const Function& F) {
 }
 
 
-void MSILWriter::printDeclarations(const TypeSymbolTable& ST) {
+void MSILWriter::printDeclarations(const ValueSymbolTable& ST) {
   std::string Name;
   std::set<const Type*> Printed;
+#if 0
   for (std::set<const Type*>::const_iterator
        UI = UsedTypes->begin(), UE = UsedTypes->end(); UI!=UE; ++UI) {
     const Type* Ty = *UI;
@@ -1469,10 +1474,11 @@ void MSILWriter::printDeclarations(const TypeSymbolTable& ST) {
     // Print not duplicated type
     if (Printed.insert(Ty).second) {
       Out << ".class value explicit ansi sealed '" << Name << "'";
-      Out << " { .pack " << 1 << " .size " << TD->getTypeAllocSize(Ty);
+      Out << " { .pack " << 1 << " .size " << TD->getTypeAllocSize((Type*)Ty);
       Out << " }\n\n";
     }
   }
+#endif
 }
 
 
@@ -1507,14 +1513,14 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
   // Print constant initializer
   switch (Ty->getTypeID()) {
   case Type::IntegerTyID: {
-    TySize = TD->getTypeAllocSize(Ty);
+    TySize = TD->getTypeAllocSize((Type*)Ty);
     const ConstantInt* Int = cast<ConstantInt>(C);
     Out << getPrimitiveTypeName(Ty,true) << "(" << Int->getSExtValue() << ")";
     break;
   }
   case Type::FloatTyID:
   case Type::DoubleTyID: {
-    TySize = TD->getTypeAllocSize(Ty);
+    TySize = TD->getTypeAllocSize((Type*)Ty);
     const ConstantFP* FP = cast<ConstantFP>(C);
     if (Ty->getTypeID() == Type::FloatTyID)
       Out << "int32 (" << 
@@ -1687,19 +1693,23 @@ void MSILWriter::printExternals() {
 //                      External Interface declaration
 //===----------------------------------------------------------------------===//
 
-bool MSILTarget::addPassesToEmitFile(PassManagerBase &PM,
-                                     formatted_raw_ostream &o,
-                                     CodeGenFileType FileType,
-                                     CodeGenOpt::Level OptLevel,
-                                     bool DisableVerify)
-{
+bool MSILTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
+                                           formatted_raw_ostream &o,
+                                           CodeGenFileType FileType,
+                                           bool DisableVerify,
+                                           AnalysisID StartAfter,
+                                           AnalysisID StopAfter) {
   if (FileType != TargetMachine::CGFT_AssemblyFile) return true;
+
   MSILWriter* Writer = new MSILWriter(o);
+  MSILModule* Module = new MSILModule();
+  Module->Writer = Writer;
+
   PM.add(createGCLoweringPass());
   // FIXME: Handle switch through native IL instruction "switch"
   PM.add(createLowerSwitchPass());
   PM.add(createCFGSimplificationPass());
-  PM.add(new MSILModule(Writer->UsedTypes,Writer->TD));
+  PM.add(Module);
   PM.add(Writer);
   PM.add(createGCInfoDeleter());
   return false;
