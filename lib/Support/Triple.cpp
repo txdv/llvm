@@ -21,6 +21,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
 
   case arm:     return "arm";
   case cellspu: return "cellspu";
+  case cil:     return "cil";
   case hexagon: return "hexagon";
   case mips:    return "mips";
   case mipsel:  return "mipsel";
@@ -677,6 +678,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::amdil:
   case llvm::Triple::arm:
   case llvm::Triple::cellspu:
+  case llvm::Triple::cil:
   case llvm::Triple::hexagon:
   case llvm::Triple::le32:
   case llvm::Triple::mblaze:
@@ -726,6 +728,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::amdil:
   case Triple::arm:
   case Triple::cellspu:
+  case Triple::cil:
   case Triple::hexagon:
   case Triple::le32:
   case Triple::mblaze:
@@ -759,6 +762,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::amdil:
   case Triple::arm:
   case Triple::cellspu:
+  case Triple::cil:
   case Triple::hexagon:
   case Triple::le32:
   case Triple::mblaze:
