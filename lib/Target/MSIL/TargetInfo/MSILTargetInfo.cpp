@@ -7,20 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MSILWriter.h"
+#include "MSILBackend.h"
+#include "MSILTargetMachine.h"
 #include "llvm/Module.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 Target llvm::TheMSILTarget;
 
-static unsigned MSIL_TripleMatchQuality(const std::string &TT) {
-  // This class always works, but shouldn't be the default in most cases.
-  return 1;
+extern "C" void LLVMInitializeMSILTargetInfo() {
+  RegisterTarget<Triple::cil, /*HasJIT=*/false>
+    X(TheMSILTarget, "cil", "Common Intermediate Language");
 }
 
-extern "C" void LLVMInitializeMSILTargetInfo() { 
-  TargetRegistry::RegisterTarget(TheMSILTarget, "msil",    
-                                  "MSIL backend",
-                                  &MSIL_TripleMatchQuality);
-}
+extern "C" void LLVMInitializeMSILTargetMC() {}
