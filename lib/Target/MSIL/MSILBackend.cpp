@@ -18,6 +18,7 @@
 #include "llvm/Intrinsics.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/PassSupport.h"
+#include "llvm/ValueSymbolTable.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Analysis/ConstantsScanner.h"
 #include "llvm/Support/CallSite.h"
@@ -39,9 +40,11 @@ bool MSILModule::runOnModule(Module &M) {
   ModulePtr = &M;
   Writer->TD = &getAnalysis<TargetData>();
   bool Changed = false;
-  // Find named types.  
+  // Find named types.
   ValueSymbolTable& Table = M.getValueSymbolTable();
-  const SetVector<Type *> Types = getAnalysis<FindUsedTypes>().getTypes();
+  const SetVector<Type *>& Types = getAnalysis<FindUsedTypes>().getTypes();
+  Writer->UsedTypes = Types;
+
 #if 0
   for (ValueSymbolTable::iterator I = Table.begin(), E = Table.end(); I!=E; ) {
     if (!I->second->getType()->isStructTy() /*&& !I->second->getType()->isOpaqueTy()*/)
@@ -56,8 +59,7 @@ bool MSILModule::runOnModule(Module &M) {
       }
     }
   }
-#endif
-#if 0
+
   // Find unnamed types.
   unsigned RenameCounter = 0;
   for (std::set<const Type *>::const_iterator I = Types.begin(),
@@ -82,16 +84,19 @@ INITIALIZE_PASS_DEPENDENCY(FindUsedTypes)
 INITIALIZE_PASS_END(MSILModule, "msil-module",
                 "MSIL module pass", false, false)
 
-
 char MSILWriter::ID = 0;
-//INITIALIZE_PASS(MSILWriter, "msil-writer",
-//                "MSIL writer", false, false)
+INITIALIZE_PASS_BEGIN(MSILWriter, "msil-writer",
+                "MSIL writer pass", false, false)
+INITIALIZE_PASS_DEPENDENCY(MSILModule)
+INITIALIZE_PASS_DEPENDENCY(LoopInfo)
+INITIALIZE_PASS_END(MSILWriter, "msil-writer",
+                "MSIL writer pass", false, false)
 
 bool MSILWriter::runOnFunction(Function &F) {
   if (F.isDeclaration()) return false;
 
   // Do not codegen any 'available_externally' functions at all, they have
-  // definitions outside the translation unit.
+  // definitions *Outside the translation unit.
   if (F.hasAvailableExternallyLinkage())
     return false;
 
@@ -103,15 +108,15 @@ bool MSILWriter::runOnFunction(Function &F) {
 
 bool MSILWriter::doInitialization(Module &M) {
   ModulePtr = &M;
-  Out << ".assembly extern mscorlib {}\n";
-  Out << ".assembly MSIL {}\n\n";
-  Out << "// External\n";
+  *Out << ".assembly extern mscorlib {}\n";
+  *Out << ".assembly MSIL {}\n\n";
+  *Out << "// External\n";
   printExternals();
-  Out << "// Declarations\n";
+  *Out << "// Declarations\n";
   printDeclarations(M.getValueSymbolTable());
-  Out << "// Definitions\n";
+  *Out << "// Definitions\n";
   printGlobalVariables();
-  Out << "// Startup code\n";
+  *Out << "// Startup code\n";
   printModuleStartup();
   return false;
 }
@@ -123,7 +128,7 @@ bool MSILWriter::doFinalization(Module &M) {
 
 
 void MSILWriter::printModuleStartup() {
-  Out <<
+  *Out <<
   ".method static public int32 $MSIL_Startup() {\n"
   "\t.entrypoint\n"
   "\t.locals (native int i)\n"
@@ -139,7 +144,7 @@ void MSILWriter::printModuleStartup() {
   "\tdup\n"
   "\tstloc\targc\n";
   printPtrLoad(TD->getPointerSize());
-  Out <<
+  *Out <<
   "\tmul\n"
   "\tlocalloc\n"
   "\tstloc\targv\n"
@@ -159,7 +164,7 @@ void MSILWriter::printModuleStartup() {
   "\tldloc\targv\n"
   "\tldloc\ti\n";
   printPtrLoad(TD->getPointerSize());
-  Out << 
+  *Out << 
   "\tmul\n"
   "\tadd\n"
   "\tldloc\tptr\n"
@@ -175,7 +180,7 @@ void MSILWriter::printModuleStartup() {
   // Call user 'main' function.
   const Function* F = ModulePtr->getFunction("main");
   if (!F || F->isDeclaration()) {
-    Out << "\tldc.i4.0\n\tret\n}\n";
+    *Out << "\tldc.i4.0\n\tret\n}\n";
     return;
   }
   bool BadSig = true;
@@ -189,7 +194,7 @@ void MSILWriter::printModuleStartup() {
   case 1:
     Arg1 = F->arg_begin();
     if (Arg1->getType()->isIntegerTy()) {
-      Out << "\tldloc\targc\n";
+      *Out << "\tldloc\targc\n";
       Args = getTypeName(Arg1->getType());
       BadSig = false;
     }
@@ -198,7 +203,7 @@ void MSILWriter::printModuleStartup() {
     Arg1 = Arg2 = F->arg_begin(); ++Arg2;
     if (Arg1->getType()->isIntegerTy() && 
         Arg2->getType()->getTypeID() == Type::PointerTyID) {
-      Out << "\tldloc\targc\n\tldloc\targv\n";
+      *Out << "\tldloc\targc\n\tldloc\targv\n";
       Args = getTypeName(Arg1->getType())+","+getTypeName(Arg2->getType());
       BadSig = false;
     }
@@ -209,16 +214,16 @@ void MSILWriter::printModuleStartup() {
 
   bool RetVoid = (F->getReturnType()->getTypeID() == Type::VoidTyID);
   if (BadSig || (!F->getReturnType()->isIntegerTy() && !RetVoid)) {
-    Out << "\tldc.i4.0\n";
+    *Out << "\tldc.i4.0\n";
   } else {
-    Out << "\tcall\t" << getTypeName(F->getReturnType()) <<
+    *Out << "\tcall\t" << getTypeName(F->getReturnType()) <<
       getConvModopt(F->getCallingConv()) << "main(" << Args << ")\n";
     if (RetVoid)
-      Out << "\tldc.i4.0\n";
+      *Out << "\tldc.i4.0\n";
     else
-      Out << "\tconv.i4\n";
+      *Out << "\tconv.i4\n";
   }
-  Out << "\tret\n}\n";
+  *Out << "\tret\n}\n";
 }
 
 bool MSILWriter::isZeroValue(const Value* V) {
@@ -449,11 +454,11 @@ void MSILWriter::printValuePtrLoad(const Value* V) {
 void MSILWriter::printConstLoad(const Constant* C) {
   if (const ConstantInt* CInt = dyn_cast<ConstantInt>(C)) {
     // Integer constant
-    Out << "\tldc." << getTypePostfix(C->getType(),true) << '\t';
+    *Out << "\tldc." << getTypePostfix(C->getType(),true) << '\t';
     if (CInt->isMinValue(true))
-      Out << CInt->getSExtValue();
+      *Out << CInt->getSExtValue();
     else
-      Out << CInt->getZExtValue();
+      *Out << CInt->getZExtValue();
   } else if (const ConstantFP* FP = dyn_cast<ConstantFP>(C)) {
     // Float constant
     uint64_t X;
@@ -465,7 +470,7 @@ void MSILWriter::printConstLoad(const Constant* C) {
       X = FP->getValueAPF().bitcastToAPInt().getZExtValue();
       Size = 8;  
     }
-    Out << "\tldc.r" << Size << "\t( " << utohexstr(X) << ')';
+    *Out << "\tldc.r" << Size << "\t( " << utohexstr(X) << ')';
   } else if (isa<UndefValue>(C)) {
     // Undefined constant value = NULL.
     printPtrLoad(0);
@@ -473,7 +478,7 @@ void MSILWriter::printConstLoad(const Constant* C) {
     errs() << "Constant = " << *C << '\n';
     llvm_unreachable("Invalid constant value");
   }
-  Out << '\n';
+  *Out << '\n';
 }
 
 
@@ -544,15 +549,15 @@ void MSILWriter::printBinaryInstruction(const char* Name, const Value* Left,
                                         const Value* Right) {
   printValueLoad(Left);
   printValueLoad(Right);
-  Out << '\t' << Name << '\n';
+  *Out << '\t' << Name << '\n';
 }
 
 
 void MSILWriter::printSimpleInstruction(const char* Inst, const char* Operand) {
   if(Operand) 
-    Out << '\t' << Inst << '\t' << Operand << '\n';
+    *Out << '\t' << Inst << '\t' << Operand << '\n';
   else
-    Out << '\t' << Inst << '\n';
+    *Out << '\t' << Inst << '\n';
 }
 
 
@@ -602,7 +607,7 @@ void MSILWriter::printBranchToBlock(const BasicBlock* CurrBB,
     }
     if (isa<PHINode>(TrueBB->begin())) {
       // Handle "TrueBB" PHI Copy
-      Out << TmpLabel << ":\n";
+      *Out << TmpLabel << ":\n";
       printPHICopy(CurrBB,TrueBB);
       printSimpleInstruction("br",getLabelName(TrueBB).c_str());
     }
@@ -629,7 +634,7 @@ void MSILWriter::printSelectInstruction(const Value* Cond, const Value* VTrue,
   printSimpleInstruction("brtrue",TmpLabel.c_str());
   printSimpleInstruction("pop");
   printValueLoad(VFalse);
-  Out << TmpLabel << ":\n";
+  *Out << TmpLabel << ":\n";
 }
 
 
@@ -1002,7 +1007,7 @@ void MSILWriter::printFCmpInstruction(unsigned Predicate, const Value* Left,
 
 void MSILWriter::printInvokeInstruction(const InvokeInst* Inst) {
   std::string Label = "leave$normal_"+utostr(getUniqID());
-  Out << ".try {\n";
+  *Out << ".try {\n";
   // Load arguments
   for (int I = 0, E = Inst->getNumArgOperands(); I!=E; ++I)
     printValueLoad(Inst->getArgOperand(I));
@@ -1011,12 +1016,12 @@ void MSILWriter::printInvokeInstruction(const InvokeInst* Inst) {
   // Save function result and leave "try" block
   printValueSave(Inst);
   printSimpleInstruction("leave",Label.c_str());
-  Out << "}\n";
-  Out << "catch [mscorlib]System.Exception {\n";
+  *Out << "}\n";
+  *Out << "catch [mscorlib]System.Exception {\n";
   // Redirect to unwind block
   printSimpleInstruction("pop");
   printBranchToBlock(Inst->getParent(),NULL,Inst->getUnwindDest());
-  Out << "}\n" << Label << ":\n";
+  *Out << "}\n" << Label << ":\n";
   // Redirect to continue block
   printBranchToBlock(Inst->getParent(),NULL,Inst->getNormalDest());
 }
@@ -1212,7 +1217,7 @@ void MSILWriter::printInstruction(const Instruction* Inst) {
 
 
 void MSILWriter::printLoop(const Loop* L) {
-  Out << getLabelName(L->getHeader()->getName()) << ":\n";
+  *Out << getLabelName(L->getHeader()->getName()) << ":\n";
   const std::vector<BasicBlock*>& blocks = L->getBlocks();
   for (unsigned I = 0, E = blocks.size(); I!=E; I++) {
     BasicBlock* BB = blocks[I];
@@ -1227,11 +1232,11 @@ void MSILWriter::printLoop(const Loop* L) {
 
 
 void MSILWriter::printBasicBlock(const BasicBlock* BB) {
-  Out << getLabelName(BB) << ":\n";
+  *Out << getLabelName(BB) << ":\n";
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E; ++I) {
     const Instruction* Inst = I;
     // Comment llvm original instruction
-    // Out << "\n//" << *Inst << "\n";
+    // *Out << "\n//" << *Inst << "\n";
     // Do not handle PHI instruction in current block
     if (Inst->getOpcode()==Instruction::PHI) continue;
     // Print instruction
@@ -1265,12 +1270,12 @@ void MSILWriter::printLocalVariables(const Function& F) {
       // Local variable allocation.
       Ty = PointerType::getUnqual(AI->getAllocatedType());
       Name = getValueName(AI);
-      Out << "\t.locals (" << getTypeName(Ty) << Name << ")\n";
+      *Out << "\t.locals (" << getTypeName(Ty) << Name << ")\n";
     } else if (I->getType()!=Type::getVoidTy(F.getContext())) {
       // Operation result.
       Ty = I->getType();
       Name = getValueName(&*I);
-      Out << "\t.locals (" << getTypeName(Ty) << Name << ")\n";
+      *Out << "\t.locals (" << getTypeName(Ty) << Name << ")\n";
     }
     // Test on 'va_list' variable    
     bool isVaList = false;     
@@ -1295,7 +1300,7 @@ void MSILWriter::printLocalVariables(const Function& F) {
     if (isVaList && Printed.insert(VaList).second) {
       Name = getValueName(VaList);
       Name.insert(Name.length()-1,"$valist");
-      Out << "\t.locals (valuetype [mscorlib]System.ArgIterator "
+      *Out << "\t.locals (valuetype [mscorlib]System.ArgIterator "
           << Name << ")\n";
     }
   }
@@ -1410,7 +1415,7 @@ void MSILWriter::printStaticInitializerList() {
     for (std::vector<StaticInitializer>::const_iterator I = InitList.begin(),
          E = InitList.end(); I!=E; ++I) {
       if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(I->constant)) {
-        // Out << "\n// Init " << getValueName(VarI->first) << ", offset " <<
+        // *Out << "\n// Init " << getValueName(VarI->first) << ", offset " <<
         //  utostr(I->offset) << ", type "<< *I->constant->getType() << "\n\n";
         // Load variable address
         printValueLoad(VarI->first);
@@ -1437,35 +1442,35 @@ void MSILWriter::printStaticInitializerList() {
 
 void MSILWriter::printFunction(const Function& F) {
   bool isSigned = F.paramHasAttr(0, Attribute::SExt);
-  Out << "\n.method static ";
-  Out << (F.hasLocalLinkage() ? "private " : "public ");
-  if (F.isVarArg()) Out << "vararg ";
-  Out << getTypeName(F.getReturnType(),isSigned) << 
+  *Out << "\n.method static ";
+  *Out << (F.hasLocalLinkage() ? "private " : "public ");
+  if (F.isVarArg()) *Out << "vararg ";
+  *Out << getTypeName(F.getReturnType(),isSigned) << 
     getConvModopt(F.getCallingConv()) << getValueName(&F) << '\n';
   // Arguments
-  Out << "\t(";
+  *Out << "\t(";
   unsigned ArgIdx = 1;
   for (Function::const_arg_iterator I = F.arg_begin(), E = F.arg_end(); I!=E;
        ++I, ++ArgIdx) {
     isSigned = F.paramHasAttr(ArgIdx, Attribute::SExt);
-    if (I!=F.arg_begin()) Out << ", ";
-    Out << getTypeName(I->getType(),isSigned) << getValueName(I);
+    if (I!=F.arg_begin()) *Out << ", ";
+    *Out << getTypeName(I->getType(),isSigned) << getValueName(I);
   }
-  Out << ") cil managed\n";
+  *Out << ") cil managed\n";
   // Body
-  Out << "{\n";
+  *Out << "{\n";
   printLocalVariables(F);
   printFunctionBody(F);
-  Out << "}\n";
+  *Out << "}\n";
 }
 
 
 void MSILWriter::printDeclarations(const ValueSymbolTable& ST) {
   std::string Name;
   std::set<const Type*> Printed;
-#if 0
-  for (std::set<const Type*>::const_iterator
-       UI = UsedTypes->begin(), UE = UsedTypes->end(); UI!=UE; ++UI) {
+
+  for (SetVector<Type *>::iterator UI = UsedTypes.begin(), UE = UsedTypes.end();
+       UI!=UE; ++UI) {
     const Type* Ty = *UI;
     if (Ty->isArrayTy() || Ty->isVectorTy() || Ty->isStructTy())
       Name = getTypeName(Ty, false, true);
@@ -1473,12 +1478,11 @@ void MSILWriter::printDeclarations(const ValueSymbolTable& ST) {
     else continue;
     // Print not duplicated type
     if (Printed.insert(Ty).second) {
-      Out << ".class value explicit ansi sealed '" << Name << "'";
-      Out << " { .pack " << 1 << " .size " << TD->getTypeAllocSize((Type*)Ty);
-      Out << " }\n\n";
+      *Out << ".class value explicit ansi sealed '" << Name << "'";
+      *Out << " { .pack " << 1 << " .size " << TD->getTypeAllocSize((Type*)Ty);
+      *Out << " }\n\n";
     }
   }
-#endif
 }
 
 
@@ -1507,7 +1511,7 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
   if (isa<ConstantAggregateZero>(C) || C->isNullValue()) {
     TySize = TD->getTypeAllocSize(C->getType());
     Offset += TySize;
-    Out << "int8 (0) [" << TySize << "]";
+    *Out << "int8 (0) [" << TySize << "]";
     return;
   }
   // Print constant initializer
@@ -1515,7 +1519,7 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
   case Type::IntegerTyID: {
     TySize = TD->getTypeAllocSize((Type*)Ty);
     const ConstantInt* Int = cast<ConstantInt>(C);
-    Out << getPrimitiveTypeName(Ty,true) << "(" << Int->getSExtValue() << ")";
+    *Out << getPrimitiveTypeName(Ty,true) << "(" << Int->getSExtValue() << ")";
     break;
   }
   case Type::FloatTyID:
@@ -1523,10 +1527,10 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
     TySize = TD->getTypeAllocSize((Type*)Ty);
     const ConstantFP* FP = cast<ConstantFP>(C);
     if (Ty->getTypeID() == Type::FloatTyID)
-      Out << "int32 (" << 
+      *Out << "int32 (" << 
         (uint32_t)FP->getValueAPF().bitcastToAPInt().getZExtValue() << ')';
     else
-      Out << "int64 (" << 
+      *Out << "int64 (" << 
         FP->getValueAPF().bitcastToAPInt().getZExtValue() << ')';
     break;
   }
@@ -1534,7 +1538,7 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
   case Type::VectorTyID:
   case Type::StructTyID:
     for (unsigned I = 0, E = C->getNumOperands(); I<E; I++) {
-      if (I!=0) Out << ",\n";
+      if (I!=0) *Out << ",\n";
       printStaticConstant(cast<Constant>(C->getOperand(I)), Offset);
     }
     break;
@@ -1543,14 +1547,14 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
     // Initialize with global variable address
     if (const GlobalVariable *G = dyn_cast<GlobalVariable>(C)) {
       std::string name = getValueName(G);
-      Out << "&(" << name.insert(name.length()-1,"$data") << ")";
+      *Out << "&(" << name.insert(name.length()-1,"$data") << ")";
     } else {
       // Dynamic initialization
       if (!isa<ConstantPointerNull>(C) && !C->isNullValue())
         InitListPtr->push_back(StaticInitializer(C,Offset));
       // Null pointer initialization
-      if (TySize==4) Out << "int32 (0)";
-      else if (TySize==8) Out << "int64 (0)";
+      if (TySize==4) *Out << "int32 (0)";
+      else if (TySize==8) *Out << "int64 (0)";
       else llvm_unreachable("Invalid pointer size");
     }
     break;
@@ -1569,13 +1573,13 @@ void MSILWriter::printStaticInitializer(const Constant* C,
   case Type::IntegerTyID:
   case Type::FloatTyID:
   case Type::DoubleTyID: 
-    Out << getPrimitiveTypeName(C->getType(), false);
+    *Out << getPrimitiveTypeName(C->getType(), false);
     break;
   case Type::ArrayTyID:
   case Type::VectorTyID:
   case Type::StructTyID:
   case Type::PointerTyID:
-    Out << getTypeName(C->getType());
+    *Out << getTypeName(C->getType());
     break;
   default:
     errs() << "Type = " << *C << "\n";
@@ -1584,11 +1588,11 @@ void MSILWriter::printStaticInitializer(const Constant* C,
   // Print initializer
   std::string label = Name;
   label.insert(label.length()-1,"$data");
-  Out << Name << " at " << label << '\n';
-  Out << ".data " << label << " = {\n";
+  *Out << Name << " at " << label << '\n';
+  *Out << ".data " << label << " = {\n";
   uint64_t offset = 0;
   printStaticConstant(C,offset);
-  Out << "\n}\n\n";
+  *Out << "\n}\n\n";
 }
 
 
@@ -1607,10 +1611,10 @@ void MSILWriter::printGlobalVariables() {
   Module::global_iterator I,E;
   for (I = ModulePtr->global_begin(), E = ModulePtr->global_end(); I!=E; ++I) {
     // Variable definition
-    Out << ".field static " << (I->isDeclaration() ? "public " :
+    *Out << ".field static " << (I->isDeclaration() ? "public " :
                                                      "private ");
     if (I->isDeclaration()) {
-      Out << getTypeName(I->getType()) << getValueName(&*I) << "\n\n";
+      *Out << getTypeName(I->getType()) << getValueName(&*I) << "\n\n";
     } else
       printVariableDefinition(&*I);
   }
@@ -1645,17 +1649,17 @@ void MSILWriter::printExternals() {
       std::string Name = getConvModopt(F->getCallingConv())+getValueName(F);
       std::string Sig = 
         getCallSignature(cast<FunctionType>(F->getFunctionType()), NULL, Name);
-      Out << ".method static hidebysig pinvokeimpl(\""
+      *Out << ".method static hidebysig pinvokeimpl(\""
           << getLibraryName(F) << "\")\n\t" << Sig << " preservesig {}\n\n";
     }
   }
   // External variables and static initialization.
-  Out <<
+  *Out <<
   ".method public hidebysig static pinvokeimpl(\"KERNEL32.DLL\" ansi winapi)"
   "  native int LoadLibrary(string) preservesig {}\n"
   ".method public hidebysig static pinvokeimpl(\"KERNEL32.DLL\" ansi winapi)"
   "  native int GetProcAddress(native int, string) preservesig {}\n";
-  Out <<
+  *Out <<
   ".method private static void* $MSIL_Import(string lib,string sym)\n"
   " managed cil\n{\n"
   "\tldarg\tlib\n"
@@ -1679,13 +1683,13 @@ void MSILWriter::printExternals() {
     // Use "LoadLibrary"/"GetProcAddress" to recive variable address.
     std::string Tmp = getTypeName(I->getType())+getValueName(&*I);
     printSimpleInstruction("ldsflda",Tmp.c_str());
-    Out << "\tldstr\t\"" << getLibraryName(&*I) << "\"\n";
-    Out << "\tldstr\t\"" << I->getName() << "\"\n";
+    *Out << "\tldstr\t\"" << getLibraryName(&*I) << "\"\n";
+    *Out << "\tldstr\t\"" << I->getName() << "\"\n";
     printSimpleInstruction("call","void* $MSIL_Import(string,string)");
     printIndirectSave(I->getType());
   }
   printSimpleInstruction("ret");
-  Out << "}\n\n";
+  *Out << "}\n\n";
 }
 
 
@@ -1701,7 +1705,9 @@ bool MSILTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                            AnalysisID StopAfter) {
   if (FileType != TargetMachine::CGFT_AssemblyFile) return true;
 
-  MSILWriter* Writer = new MSILWriter(o);
+  MSILWriter* Writer = new MSILWriter();
+  Writer->Out = &o;
+
   MSILModule* Module = new MSILModule();
   Module->Writer = Writer;
 
