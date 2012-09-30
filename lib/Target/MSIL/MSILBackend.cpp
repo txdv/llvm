@@ -1537,6 +1537,14 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
   case Type::ArrayTyID:
   case Type::VectorTyID:
   case Type::StructTyID:
+    if (isa<ConstantDataSequential>(C)) {
+      const ConstantDataSequential* Seq = cast<ConstantDataSequential>(C);
+      for (unsigned I = 0, E = Seq->getNumElements(); I<E; I++) {
+        if (I!=0) *Out << ",\n";
+        printStaticConstant(Seq->getElementAsConstant(I), Offset);
+      }
+      break;
+    }
     for (unsigned I = 0, E = C->getNumOperands(); I<E; I++) {
       if (I!=0) *Out << ",\n";
       printStaticConstant(cast<Constant>(C->getOperand(I)), Offset);
