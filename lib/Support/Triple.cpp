@@ -260,6 +260,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("nvptx64", Triple::nvptx64)
     .Case("le32", Triple::le32)
     .Case("amdil", Triple::amdil)
+    .Case("cil", Triple::cil)
     .Default(Triple::UnknownArch);
 }
 
