@@ -80,10 +80,11 @@ namespace llvm {
     }
 
   public:
-    formatted_raw_ostream &Out;
-    Module* ModulePtr;
-    TargetData* TD;
+    formatted_raw_ostream *Out;
+    Module *ModulePtr;
+    TargetData *TD;
     LoopInfo *LInfo;
+    SetVector<Type *> UsedTypes;
     std::vector<StaticInitializer>* InitListPtr;
     std::map<const GlobalVariable*,std::vector<StaticInitializer> >
       StaticInitList;
@@ -91,8 +92,8 @@ namespace llvm {
     DenseMap<const Value*, unsigned> AnonValueNumbers;
     unsigned NextAnonValueNumber;
 
-    MSILWriter(formatted_raw_ostream &o) : FunctionPass(ID), Out(o),
-         NextAnonValueNumber(0) {
+    MSILWriter() : FunctionPass(ID), NextAnonValueNumber(0) {
+      initializeMSILWriterPass(*PassRegistry::getPassRegistry());
       UniqID = 0;
     }
 
