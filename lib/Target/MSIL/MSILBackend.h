@@ -245,6 +245,8 @@ namespace llvm {
 
     void printStaticInitializer(const Constant* C, const std::string& Name);
 
+    void printGlobalConstructors(const GlobalVariable* G);
+
     void printVariableDefinition(const GlobalVariable* G);
 
     void printGlobalVariables();
