@@ -348,10 +348,14 @@ std::string MSILWriter::getTypeName(const Type* Ty, bool isSigned,
   switch (Ty->getTypeID()) {
   case Type::PointerTyID:
     return "void* ";
-  case Type::StructTyID:
+  case Type::StructTyID: {
+    const StructType* Struct = cast<StructType>(Ty);
+    if (!Struct->hasName())
+      return StringRef();
     if (isNested)
       return Ty->getStructName();
     return "valuetype '"+Ty->getStructName().str()+"' ";
+  }
   case Type::ArrayTyID:
     if (isNested)
       return getArrayTypeName(Ty->getTypeID(),Ty);
@@ -1577,6 +1581,11 @@ void MSILWriter::printStaticConstant(const Constant* C, uint64_t& Offset) {
 
 void MSILWriter::printStaticInitializer(const Constant* C,
                                         const std::string& Name) {
+  if (Name == "llvm.global_ctors") {
+    // This is already handled in the initialization functions.
+    return;
+  }
+
   switch (C->getType()->getTypeID()) {
   case Type::IntegerTyID:
   case Type::FloatTyID:
@@ -1603,6 +1612,22 @@ void MSILWriter::printStaticInitializer(const Constant* C,
   *Out << "\n}\n\n";
 }
 
+void MSILWriter::printGlobalConstructors(const GlobalVariable* G) {
+  const llvm::Constant *Init = G->getInitializer();
+  const llvm::ConstantArray *Arr = cast<ConstantArray>(Init);
+  if (!Arr) return;
+
+  for(unsigned i = 0; i < Arr->getNumOperands(); ++i) {
+    const ConstantStruct *Struct = cast<ConstantStruct>(
+        Arr->getOperand(i));
+    if (!Struct) continue;
+
+    llvm::Function* Fn = cast<Function>(Struct->getOperand(1));
+    if (!Fn) continue;
+
+    printFunctionCall(Fn, CallInst::Create(Fn));
+  }
+}
 
 void MSILWriter::printVariableDefinition(const GlobalVariable* G) {
   const Constant* C = G->getInitializer();
@@ -1696,6 +1721,12 @@ void MSILWriter::printExternals() {
     printSimpleInstruction("call","void* $MSIL_Import(string,string)");
     printIndirectSave(I->getType());
   }
+  
+  llvm::GlobalVariable *GlobalCtors = ModulePtr->getGlobalVariable(
+      "llvm.global_ctors");
+  if (GlobalCtors)
+    printGlobalConstructors(GlobalCtors);
+  
   printSimpleInstruction("ret");
   *Out << "}\n\n";
 }
