@@ -73,13 +73,6 @@ private:
                         unsigned &OrigErrorInfo,
                         bool matchingInlineAsm = false);
 
-  unsigned getMCInstOperandNum(unsigned Kind, MCInst &Inst,
-                    const SmallVectorImpl<MCParsedAsmOperand*> &Operands,
-                               unsigned OperandNum, unsigned &NumMCOperands) {
-    return getMCInstOperandNumImpl(Kind, Inst, Operands, OperandNum,
-                                   NumMCOperands);
-  }
-
   /// isSrcOp - Returns true if operand is either (%rsi) or %ds:%(rsi)
   /// in 64bit mode or (%esi) or %es:(%esi) in 32bit mode.
   bool isSrcOp(X86Operand &Op);
@@ -202,7 +195,8 @@ struct X86Operand : public MCParsedAsmOperand {
   SMLoc getStartLoc() const { return StartLoc; }
   /// getEndLoc - Get the location of the last token of this operand.
   SMLoc getEndLoc() const { return EndLoc; }
-
+  /// getLocRange - Get the range between the first and last token of this
+  /// operand.
   SMRange getLocRange() const { return SMRange(StartLoc, EndLoc); }
 
   virtual void print(raw_ostream &OS) const {}
@@ -1631,16 +1625,20 @@ MatchInstruction(SMLoc IDLoc, unsigned &Kind,
   unsigned Match1, Match2, Match3, Match4;
   unsigned tKind;
 
-  Match1 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  Match1 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore,
+                                isParsingIntelSyntax());
   if (Match1 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[1];
-  Match2 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  Match2 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore,
+                                isParsingIntelSyntax());
   if (Match2 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[2];
-  Match3 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  Match3 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore,
+                                isParsingIntelSyntax());
   if (Match3 == Match_Success) Kind = tKind;
   Tmp[Base.size()] = Suffixes[3];
-  Match4 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore);
+  Match4 = MatchInstructionImpl(Operands, tKind, Inst, ErrorInfoIgnore,
+                                isParsingIntelSyntax());
   if (Match4 == Match_Success) Kind = tKind;
 
   // Restore the old token.

@@ -714,7 +714,7 @@ enforced, and hopefully what to do about it.  Here is one complete example:
 .. code-block:: c++
 
   inline Value *getOperand(unsigned i) { 
-    assert(i < Operands.size() &amp;&amp; "getOperand() out of range!");
+    assert(i < Operands.size() && "getOperand() out of range!");
     return Operands[i]; 
   }
 
@@ -817,6 +817,24 @@ methods or it derives from classes with virtual methods), it must always have at
 least one out-of-line virtual method in the class.  Without this, the compiler
 will copy the vtable and RTTI into every ``.o`` file that ``#include``\s the
 header, bloating ``.o`` file sizes and increasing link times.
+
+Don't use default labels in fully covered switches over enumerations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``-Wswitch`` warns if a switch, without a default label, over an enumeration
+does not cover every enumeration value. If you write a default label on a fully
+covered switch over an enumeration then the ``-Wswitch`` warning won't fire
+when new elements are added to that enumeration. To help avoid adding these
+kinds of defaults, Clang has the warning ``-Wcovered-switch-default`` which is
+off by default but turned on when building LLVM with a version of Clang that
+supports the warning.
+
+A knock-on effect of this stylistic requirement is that when building LLVM with
+GCC you may get warnings related to "control may reach end of non-void function"
+if you return from each case of a covered switch-over-enum because GCC assumes
+that the enum expression may take any representable value, not just those of
+individual enumerators. To suppress this warning, use ``llvm_unreachable`` after
+the switch.
 
 Use ``LLVM_DELETED_FUNCTION`` to mark uncallable methods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
